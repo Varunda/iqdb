@@ -27,6 +27,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 
 #include <iqdb/haar.h>
 #include <iqdb/haar_signature.h>
@@ -65,16 +66,16 @@ typedef struct {
 } lumin_native;
 
 struct sim_value {
-  imageId id;
+  postId id;
   Score score;
-  sim_value(imageId id_, Score score_) : id(id_), score(score_) {};
+  sim_value(postId id_, Score score_) : id(id_), score(score_) {};
   bool operator<(const sim_value &other) const { return score < other.score; }
 };
 
 struct image_info {
   image_info() {}
-  image_info(imageId i, const lumin_native &a) : id(i), avgl(a) {}
-  imageId id;
+  image_info(postId i, const lumin_native &a) : id(i), avgl(a) {}
+  postId id;
   lumin_native avgl;
 };
 
@@ -90,21 +91,23 @@ public:
   sim_vector queryFromBlob(const std::string blob, int numres = 10);
 
   // Stats.
-  size_t getImgCount();
-  bool isDeleted(imageId id); // XXX id is the iqdb id
+  uint64_t getImgCount();
+  bool isDeleted(postId iqdb_id); // XXX id is the iqdb id
 
   // DB maintenance.
-  void addImage(imageId id, const HaarSignature& signature);
-  std::optional<Image> getImage(imageId post_id);
-  void removeImage(imageId id);
+  void addImage(postId id, const HaarSignature& signature);
+  std::optional<Image> getImage(postId post_id);
+  void removeImage(postId id);
   void loadDatabase(std::string filename);
 
 private:
-  void addImageInMemory(imageId iqdb_id, imageId post_id, const HaarSignature& signature);
+  void addImageInMemory(postId post_id, const HaarSignature& signature);
 
-  std::vector<image_info> m_info;
+  //std::vector<image_info> m_info;
+  std::map<postId, image_info> m_info;
   std::unique_ptr<SqliteDB> sqlite_db_;
   bucket_set imgbuckets;
+  uint64_t img_count = 0;
 
 private:
   void operator=(const IQDB &);

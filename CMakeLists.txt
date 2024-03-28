@@ -34,7 +34,7 @@ include(FetchContent)
 FetchContent_Declare(
   httplib
   GIT_REPOSITORY https://github.com/yhirose/cpp-httplib
-  GIT_TAG        v0.8.9
+  GIT_TAG        v0.15.3
 )
 
 FetchContent_Declare(

@@ -21,33 +21,33 @@
 #include <csignal>
 #include <cstddef>
 #include <cstring>
-#include <string>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <string>
 
 #include <iqdb/debug.h>
+#include <iqdb/haar_signature.h>
 #include <iqdb/imgdb.h>
 #include <iqdb/imglib.h>
-#include <iqdb/haar_signature.h>
 #include <iqdb/types.h>
 
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
-using nlohmann::json;
 using httplib::Server;
 using iqdb::IQDB;
+using nlohmann::json;
 
 namespace iqdb {
 
 static Server server;
 
-static void signal_handler(int signal, siginfo_t* info, void* ucontext) {
-  INFO("Received signal {} ({})\n", signal, strsignal(signal));
+static void signal_handler(int signal, siginfo_t *info, void *ucontext) {
+  INFO("received signal {} ({})\n", signal, strsignal(signal));
 
   if (signal == SIGSEGV) {
-    INFO("Address: {}\n", info->si_addr);
+    INFO("address: {}\n", info->si_addr);
     DEBUG("{}", get_backtrace(2));
     exit(1);
   }
@@ -70,49 +70,84 @@ void install_signal_handlers() {
 }
 
 void http_server(const std::string host, const int port, const std::string database_filename) {
-  INFO("Starting server...\n");
+  INFO("starting server...\n");
 
   std::shared_mutex mutex_;
   auto memory_db = std::make_unique<IQDB>(database_filename);
+  INFO("created DB from {}\n", database_filename.c_str());
 
   install_signal_handlers();
 
-  server.Post("/images/(\\d+)", [&](const auto &request, auto &response) {
+  // GET /images/:id
+  //    get the info about an image based on an image ID
+  //    where :id is a uint64
+  server.Get("/images/(.+)", [&](const auto &request, auto &response) {
     std::unique_lock lock(mutex_);
 
-    if (!request.has_file("file"))
-      throw iqdb::param_error("`POST /images/:id` requires a `file` param");
+    //const postId post_id = std::stoull(request.matches[1]);
+    const postId post_id = request.matches[1];
+    INFO("getting post_id {}\n", post_id.c_str());
+    auto image = memory_db->getImage(post_id);
+    json data;
+    if (image == std::nullopt) {
+        data = { { "message", "not found" } };
+        response.status = 404;
+    } else {
+        data = {
+            { "post_id", post_id.c_str() },
+            { "hash", image->haar().to_string() },
+            { "avglf", { image->avglf1, image->avglf2, image->avglf3 }},
+        };
+    }
 
-    const postId post_id = std::stoi(request.matches[1]);
+    response.set_content(data.dump(4), "application/json");
+  });
+
+  // POST ?images/:id
+  //    
+  server.Post("/images/:post_id", [&](const httplib::Request& request, httplib::Response& response) {
+    std::unique_lock lock(mutex_);
+
+    if (!request.has_file("file")) {
+        throw iqdb::param_error("`POST /images/:id` requires a `file` param");
+    }
+
+    //const postId post_id = std::stoull(request.matches[1]);
+    const postId post_id = request.path_params.at("post_id");
+    INFO("posting image [post_id='{}']\n", post_id);
     const auto &file = request.get_file_value("file");
     const auto signature = HaarSignature::from_file_content(file.content);
     memory_db->addImage(post_id, signature);
 
     json data = {
-      { "post_id", post_id },
-      { "hash", signature.to_string() },
-      { "signature", {
-        { "avglf", signature.avglf },
-        { "sig", signature.sig },
-      }}
-    };
+        {"post_id", post_id},
+        {"hash", signature.to_string()},
+        {"signature", {
+            {"avglf", signature.avglf},
+            {"sig", signature.sig},
+        }}};
 
     response.set_content(data.dump(4), "application/json");
   });
 
-  server.Delete("/images/(\\d+)", [&](const auto &request, auto &response) {
+  // DELETE /images/:id
+  server.Delete("/images/(.+)", [&](const auto &request, auto &response) {
     std::unique_lock lock(mutex_);
 
-    const postId post_id = std::stoi(request.matches[1]);
+    //const postId post_id = std::stoull(request.matches[1]);
+    const postId post_id = request.matches[1];
     memory_db->removeImage(post_id);
 
     json data = {
-      { "post_id", post_id },
+        {"post_id", post_id},
     };
 
     response.set_content(data.dump(4), "application/json");
   });
 
+  // POST /query
+  //    include either :hash or :file
+  //    can include ?limit to limit how many results are returned
   server.Post("/query", [&](const auto &request, auto &response) {
     std::shared_lock lock(mutex_);
 
@@ -120,8 +155,9 @@ void http_server(const std::string host, const int port, const std::string datab
     sim_vector matches;
     json data = json::array();
 
-    if (request.has_param("limit"))
+    if (request.has_param("limit")) {
       limit = stoi(request.get_param_value("limit"));
+    }
 
     if (request.has_param("hash")) {
       const auto hash = request.get_param_value("hash");
@@ -136,27 +172,34 @@ void http_server(const std::string host, const int port, const std::string datab
 
     for (const auto &match : matches) {
       auto image = memory_db->getImage(match.id);
+      if (image == std::nullopt) {
+        WARN("failed to find image {} from memory_db\n", match.id);
+        continue;
+      }
+
       auto haar = image->haar();
 
       data += {
-        { "post_id", match.id },
-        { "score", match.score },
-        { "hash", haar.to_string() },
-        { "signature", {
-          { "avglf", haar.avglf },
-          { "sig", haar.sig },
-        }}
-      };
+          {"post_id", match.id},
+          {"score", match.score},
+          {"hash", haar.to_string()},
+          {"signature", {
+            {"avglf", haar.avglf},
+            {"sig", haar.sig},
+          }
+      }};
     }
 
     response.set_content(data.dump(4), "application/json");
   });
 
+  // GET /status
+  //    returns how many images are in the DB
   server.Get("/status", [&](const auto &request, auto &response) {
     std::shared_lock lock(mutex_);
 
     const size_t count = memory_db->getImgCount();
-    json data = {{"images", count}};
+    json data = { {"images", count} };
 
     response.set_content(data.dump(4), "application/json");
   });
@@ -165,17 +208,26 @@ void http_server(const std::string host, const int port, const std::string datab
     INFO("{} \"{} {} {}\" {} {}\n", req.remote_addr, req.method, req.path, req.version, res.status, res.body.size());
   });
 
-  server.set_exception_handler([](const auto& req, auto& res, std::exception &e) {
-    const auto name = demangle_name(typeid(e).name());
-    const auto message = e.what();
+  server.set_exception_handler([](const auto &req, auto &res, std::exception_ptr ep) {
 
-    json data = {
-      { "exception", name },
-      { "message", message },
-      { "backtrace", last_exception_backtrace }
-    };
+    json data;
+    try {
+        std::rethrow_exception(ep);
+    } catch (std::exception& e) {
+        const auto name = demangle_name(typeid(e).name());
+        const auto message = e.what();
+        data = {
+            {"exception", name},
+            {"message", message},
+            {"backtrace", last_exception_backtrace}
+        };
 
-    DEBUG("Exception: {} ({})\n{}\n", name, message, last_exception_backtrace);
+        DEBUG("exception: {} ({})\n{}\n", name, message, last_exception_backtrace);
+    } catch (...) {
+        data = {
+            {"message", "uncaught rethrow"}
+        };
+    }
 
     res.set_content(data.dump(4), "application/json");
     res.status = 500;
@@ -188,12 +240,11 @@ void http_server(const std::string host, const int port, const std::string datab
 
 void help() {
   printf(
-    "Usage: iqdb COMMAND [ARGS...]\n"
-    "  iqdb http [host] [port] [dbfile]  Run HTTP server on given host/port.\n"
-    "  iqdb help                         Show this help.\n"
-  );
+      "Usage: iqdb COMMAND [ARGS...]\n"
+      "  iqdb http [host] [port] [dbfile]  Run HTTP server on given host/port.\n"
+      "  iqdb help                         Show this help.\n");
 
   exit(0);
 }
 
-}
+} // namespace iqdb

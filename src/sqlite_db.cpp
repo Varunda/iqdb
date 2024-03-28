@@ -30,26 +30,26 @@ std::optional<Image> SqliteDB::getImage(postId post_id) {
   if (results.size() == 1) {
     return results[0];
   } else {
-    DEBUG("Couldn't find post #{} in sqlite database.\n", post_id);
+    DEBUG("couldn't find post {} in sqlite database\n", post_id);
     return std::nullopt;
   }
 }
 
-int SqliteDB::addImage(postId post_id, HaarSignature signature) {
-  int id = -1;
-  auto sig_ptr = (const char*)signature.sig;
-  std::vector<char> sig_blob(sig_ptr, sig_ptr + sizeof(signature.sig));
-  Image image {
-    0, post_id, signature.avglf[0], signature.avglf[1], signature.avglf[2], sig_blob
-  };
+void SqliteDB::addImage(postId post_id, HaarSignature signature) {
+    const char* sig_ptr = (const char*)signature.sig;
+    std::vector<char> sig_blob(sig_ptr, sig_ptr + sizeof(signature.sig));
 
-  storage_.transaction([&] {
-    removeImage(post_id);
-    id = storage_.insert(image);
-    return true;
-  });
+    Image image = {
+        post_id, signature.avglf[0], signature.avglf[1], signature.avglf[2], sig_blob
+    };
 
-  return id;
+    INFO("adding post to DB [post_id={}]\n", image.post_id);
+
+    storage_.transaction([&] {
+        removeImage(post_id);
+        storage_.replace(image);
+        return true;
+    });
 }
 
 void SqliteDB::removeImage(postId post_id) {

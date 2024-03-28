@@ -59,21 +59,23 @@ struct ImgBin {
   int bin[N * N];
 
   constexpr ImgBin() : bin() {
-    for (int i = 0; i < N; i++)
-      for (int j = 0; j < N; j++)
+    for (int i = 0; i < N; i++) {
+      for (int j = 0; j < N; j++) {
         bin[i * N + j] = std::min(std::max(i, j), 5);
+      }
+    }
   }
 };
 
 constexpr static auto imgBin = ImgBin<NUM_PIXELS>();
 
-using bucket_t = std::vector<uint32_t>;
+using bucket_t = std::vector<postId>;
 
 class bucket_set {
 public:
   bucket_t& at(int col, int coef);
-  void add(const HaarSignature &sig, imageId iqdb_id);
-  void remove(const HaarSignature &sig, imageId iqdb_id);
+  void add(const HaarSignature &sig, postId iqdb_id);
+  void remove(const HaarSignature &sig, postId iqdb_id);
   void eachBucket(const HaarSignature &sig, std::function<void(bucket_t&)> func);
 
 private:

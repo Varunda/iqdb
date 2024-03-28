@@ -2,3 +2,4 @@ build/
 tmp/
 .clangd
 .vscode
+iqdb.sqlite

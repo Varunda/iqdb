@@ -1,18 +1,23 @@
-[![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod)](https://gitpod.io/from-referrer/)
-
 # IQDB: Image Query Database System
 
 IQDB is a reverse image search system. It lets you search a database of images
 to find images that are visually similar to a given image.
 
-This version of IQDB is a fork of the original IQDB used by https://iqdb.org.
-This version powers the reverse image search for [Danbooru](https://github.com/danbooru/danbooru).
+this version of IQDB is forked from [Danbooru](https://github.com/danbooru/danbooru),
+which is a fork from the original IQDB used by https://iqdb.org
+
+this fork uses some changes from the [e621](https://github.com/e621ng/iqdb) fork
+
+this fork changes the IDs to be `uint64` instead of `uint32`, and adds a `GET /images:id` handle (which itself was copied from e621's IQDB), and fixes the Docker build (uses Ubuntu 22.04)
 
 # Quickstart
 
 ```bash
+# build the docker image
+docker build . -t $IMAGE_NAME
+
 # Run IQDB in Docker on port 5588. This will create a database file in the current directory called `iqdb.sqlite`.
-docker run --rm -it -p 5588:5588 -v $PWD:/mnt evazion/iqdb http 0.0.0.0 5588 /mnt/iqdb.sqlite
+docker run --rm -it -p 5588:5588 -v $PWD:/mnt $IMAGE_NAME http 0.0.0.0 5588 /mnt/iqdb.sqlite
 
 # Test that IQDB is running
 curl -v http://localhost:5588/status
@@ -23,11 +28,6 @@ curl -F file=@test.jpg http://localhost:5588/images/1234
 # Find images visually similar to `test.jpg`.
 curl -F file=@test.jpg http://localhost:5588/query
 ```
-
-Click the Gitpod badge above to open a demo instance of IQDB in
-[Gitpod](https://gitpod.io/). This will open a web-based VS Code environment
-where you can open a new terminal and run the curl commands above to try out
-IQDB.
 
 # Usage
 
@@ -124,11 +124,15 @@ You can also run `cmake --preset release` then `cmake --build --preset release
 
 You can run `make docker` to build the docker image.
 
+or use `docker build .` to build the docker image
+
 See the [Dockerfile](./Dockerfile) for an example of which packages to install on Ubuntu.
 
 # History
 
-This version of IQDB is a fork of the original [IQDB](https://iqdb.org/code),
+this version of IQDB is a fork from [Danbooru's IQDB](https://github.com/danbooru/iqdb),
+and incorporates some changes from [e621's IQDB](https://github.com/e621ng/iqdb).
+Danbooru's IQDB version of IQDB is a fork of the original [IQDB](https://iqdb.org/code),
 written by [piespy](mailto:piespy@gmail.com). IQDB is based on code from
 [imgSeek](https://sourceforge.net/projects/imgseek/), written by Ricardo
 Niederberger Cabral. The IQDB algorithm is based on the paper
@@ -146,3 +150,4 @@ IQDB is distributed under the terms of the GNU General Public License. See
 * https://riptutorial.com/cmake
 * https://github.com/yhirose/cpp-httplib
 * https://hub.docker.com/repository/docker/evazion/iqdb
+* https://github.com/e621ng/iqdb

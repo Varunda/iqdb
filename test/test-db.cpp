@@ -80,7 +80,7 @@ inline Idx shuffle(Idx old, int add) {
   return (old < 0 ? -(-old + add - 1) % 16000 - 1 : (old + add - 1) % 16000 + 1);
 }
 
-typedef std::map<imgdb::imageId, bool> deleted_t;
+typedef std::map<imgdb::postId, bool> deleted_t;
 
 imgdb::ImgData data, org;
 imgdb::ImgData *make_data(int id) {
@@ -99,7 +99,7 @@ imgdb::ImgData *make_data(int id) {
 
 void check(imgdb::dbSpace *db, int range, const deleted_t &removed) {
   int error = 0;
-  typedef std::unordered_map<imgdb::imageId, int> id_map;
+  typedef std::unordered_map<imgdb::postId, int> id_map;
   id_map ids;
   for (int i = 1; i <= range; i++)
     ids[i] = 0;

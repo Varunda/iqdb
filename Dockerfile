@@ -1,4 +1,4 @@
-FROM ubuntu:20.10 AS build
+FROM ubuntu:22.04 AS build
 ARG CMAKE_VERSION=3.21.1
 
 WORKDIR /iqdb
@@ -11,7 +11,7 @@ RUN \
 COPY . ./
 RUN make release
 
-FROM ubuntu:20.10
+FROM ubuntu:22.04
 WORKDIR /iqdb
 RUN \
   apt-get update && \

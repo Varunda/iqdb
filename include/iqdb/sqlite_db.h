@@ -17,7 +17,6 @@ namespace iqdb {
 
 // A model representing an image signature stored in the SQLite database.
 struct Image {
-  iqdbId id;             // The internal IQDB ID.
   postId post_id;        // The external (Danbooru) post ID.
   double avglf1;         // The `double avglf[3]` array.
   double avglf2;
@@ -33,8 +32,7 @@ static auto initStorage(const std::string& path = ":memory:") {
 
   auto storage = make_storage(path,
     make_table("images",
-      make_column("id",       &Image::id, primary_key()),
-      make_column("post_id",  &Image::post_id, unique()),
+      make_column("post_id",  &Image::post_id, primary_key()),
       make_column("avglf1",   &Image::avglf1),
       make_column("avglf2",   &Image::avglf2),
       make_column("avglf3",   &Image::avglf3),
@@ -58,7 +56,7 @@ public:
   std::optional<Image> getImage(postId post_id);
 
   // Add the image to the database. Replace the image if it already exists. Returns the internal IQDB id.
-  int addImage(postId post_id, HaarSignature signature);
+  void addImage(postId post_id, HaarSignature signature);
 
   // Remove the image from the database.
   void removeImage(postId post_id);

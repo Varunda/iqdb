@@ -35,94 +35,106 @@
 
 namespace iqdb {
 
-void bucket_set::add(const HaarSignature &sig, imageId iqdb_id) {
-  eachBucket(sig, [&](auto& bucket) {
+void bucket_set::add(const HaarSignature &sig, postId iqdb_id) {
+  eachBucket(sig, [&](bucket_t& bucket) {
     bucket.push_back(iqdb_id);
   });
 }
 
-void bucket_set::remove(const HaarSignature &sig, imageId iqdb_id) {
-  eachBucket(sig, [&](auto& bucket) {
-    // https://en.wikipedia.org/wiki/Erase-remove_idiom
-    bucket.erase(std::remove(bucket.begin(), bucket.end(), iqdb_id), bucket.end());
-  });
+void bucket_set::remove(const HaarSignature &sig, postId iqdb_id) {
+    eachBucket(sig, [&](bucket_t& bucket) {
+        // https://en.wikipedia.org/wiki/Erase-remove_idiom
+        bucket.erase(std::remove(bucket.begin(), bucket.end(), iqdb_id), bucket.end());
+    });
 }
 
 bucket_t& bucket_set::at(int color, int coef) {
-  const int sign = coef < 0;
-  return buckets[color][sign][abs(coef)];
+    const int sign = coef < 0;
+    return buckets[color][sign][abs(coef)];
 }
 
 void bucket_set::eachBucket(const HaarSignature &sig, std::function<void(bucket_t&)> func) {
-  for (int c = 0; c < sig.num_colors(); c++) {
-    for (int i = 0; i < NUM_COEFS; i++) {
-      const int coef = sig.sig[c][i];
-      auto& bucket = at(c, coef);
-      func(bucket);
+    for (int c = 0; c < sig.num_colors(); c++) {
+        for (int i = 0; i < NUM_COEFS; i++) {
+            const int coef = sig.sig[c][i];
+            auto& bucket = at(c, coef);
+            func(bucket);
+        }
     }
-  }
 }
 
-void IQDB::addImage(imageId post_id, const HaarSignature& haar) {
-  removeImage(post_id);
-  int iqdb_id = sqlite_db_->addImage(post_id, haar);
-  addImageInMemory(iqdb_id, post_id, haar);
+void IQDB::addImage(postId post_id, const HaarSignature& haar) {
+    removeImage(post_id);
+    sqlite_db_->addImage(post_id, haar);
+    addImageInMemory(post_id, haar);
 
-  DEBUG("Added post #{} to memory and database (iqdb={} haar={}).\n", post_id, iqdb_id, haar.to_string());
+    DEBUG("Added post {} to memory and database (haar={})\n", post_id, haar.to_string());
 }
 
-void IQDB::addImageInMemory(imageId iqdb_id, imageId post_id, const HaarSignature& haar) {
-  if ((size_t)iqdb_id >= m_info.size()) {
-    DEBUG("Growing m_info array (size={}).\n", m_info.size());
-    m_info.resize(iqdb_id + 50000);
-  }
+void IQDB::addImageInMemory(postId post_id, const HaarSignature& haar) {
+    imgbuckets.add(haar, post_id);
+    img_count++;
 
-  imgbuckets.add(haar, iqdb_id);
+    image_info info;
+    info.id = post_id;
+    info.avgl.v[0] = static_cast<Score>(haar.avglf[0]);
+    info.avgl.v[1] = static_cast<Score>(haar.avglf[1]);
+    info.avgl.v[2] = static_cast<Score>(haar.avglf[2]);
 
-  image_info& info = m_info.at(iqdb_id);
-  info.id = post_id;
-  info.avgl.v[0] = static_cast<Score>(haar.avglf[0]);
-  info.avgl.v[1] = static_cast<Score>(haar.avglf[1]);
-  info.avgl.v[2] = static_cast<Score>(haar.avglf[2]);
+    m_info.emplace(post_id, info);
 }
 
 void IQDB::loadDatabase(std::string filename) {
-  sqlite_db_ = std::make_unique<SqliteDB>(filename);
-  m_info.clear();
-  imgbuckets = bucket_set();
+    sqlite_db_ = std::make_unique<SqliteDB>(filename);
+    m_info.clear();
+    imgbuckets = bucket_set();
 
-  sqlite_db_->eachImage([&](const auto& image) {
-    addImageInMemory(image.id, image.post_id, image.haar());
+    sqlite_db_->eachImage([&](const iqdb::Image& image) {
+        addImageInMemory(image.post_id, image.haar());
 
-    if (image.id % 250000 == 0) {
-      INFO("Loaded image {} (post #{})...\n", image.id, image.post_id);
-    }
-  });
+        if (img_count % 250000 == 0) {
+            INFO("loaded image (post {})...\n", image.post_id);
+        }
+    });
 
-  INFO("Loaded {} images from {}.\n", getImgCount(), filename);
+    INFO("loaded {} images from {}\n", getImgCount(), filename);
 }
 
-bool IQDB::isDeleted(imageId iqdb_id) {
-  return !m_info.at(iqdb_id).avgl.v[0];
+bool IQDB::isDeleted(postId iqdb_id) {
+    return !m_info.at(iqdb_id).avgl.v[0];
 }
 
-std::optional<Image> IQDB::getImage(imageId post_id) {
-  return sqlite_db_->getImage(post_id);
+std::optional<Image> IQDB::getImage(postId post_id) {
+    return sqlite_db_->getImage(post_id);
 }
 
 sim_vector IQDB::queryFromBlob(const std::string blob, int numres) {
-  HaarSignature signature = HaarSignature::from_file_content(blob);
-  return queryFromSignature(signature, numres);
+    HaarSignature signature = HaarSignature::from_file_content(blob);
+    return queryFromSignature(signature, numres);
 }
 
 sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numres) {
   Score scale = 0;
-  std::vector<Score> scores(m_info.size(), 0);
+  //std::vector<Score> scores(m_info.size(), 0);
+  std::map<postId, Score> scores;
   std::priority_queue<sim_value> pqResults; /* results priority queue; largest at top */
   sim_vector V; /* output results */
 
-  DEBUG("Querying signature={} json={}\n", signature.to_string(), signature.to_json());
+  DEBUG("querying signature={} json={}\n", signature.to_string(), signature.to_json());
 
+  // Luminance score (DC coefficient).
+  for (auto const& elem : m_info) {
+    const image_info& image_info = elem.second;
+    Score s = 0;
+
+    for (int c = 0; c < signature.num_colors(); c++) {
+        s += weights[0][c] * std::abs(image_info.avgl.v[c] - static_cast<Score>(signature.avglf[c]));
+    }
+
+    scores.emplace(elem.first, s);
+  }
+
+/*
   // Luminance score (DC coefficient).
   for (size_t i = 0; i < scores.size(); i++) {
     auto image_info = m_info[i];
@@ -134,30 +146,46 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
 
     scores[i] = s;
   }
+*/
 
-  for (int c = 0; c < signature.num_colors(); c++) {
-    for (int b = 0; b < NUM_COEFS; b++) { // for every coef on a sig
-      const int coef = signature.sig[c][b];
-      auto &bucket = imgbuckets.at(c, coef);
+    for (int c = 0; c < signature.num_colors(); c++) {
+        for (int b = 0; b < NUM_COEFS; b++) { // for every coef on a sig
+            const int coef = signature.sig[c][b];
+            bucket_t& bucket = imgbuckets.at(c, coef);
 
-      if (bucket.empty())
-        continue;
+            std::string bs;
+            for (const postId& i : bucket) {
+              bs += i;
+            }
+            //INFO("bucket {}\n", bs);
 
-      const int w = imgBin.bin[abs(coef)];
-      Score weight = weights[w][c];
-      scale -= weight;
+            if (bucket.empty()) {
+                continue;
+            }
 
-      for (auto index : bucket) {
-        scores[index] -= weight;
-      }
+            const int w = imgBin.bin[abs(coef)];
+            Score weight = weights[w][c];
+            scale -= weight;
+
+            for (postId index : bucket) {
+                scores[index] -= weight;
+                // scores[index] -= weight;
+            }
+        }
     }
-  }
 
+  // print out elems
+    for (auto const& elem : scores) {
+        INFO("{} => {}", elem.first, elem.second);
+    }
+
+/*
   // Fill up the numres-bounded priority queue (largest at top):
-  iqdbId i = 0;
+  uint64_t i = 0;
   for (; pqResults.size() < numres && i < scores.size(); i++) {
-    if (!isDeleted(i))
+    if (!isDeleted(i)) {
       pqResults.emplace(i, scores[i]);
+    }
   }
 
   for (; i < scores.size(); i++) {
@@ -167,38 +195,41 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
     }
   }
 
-  if (scale != 0)
+  if (scale != 0) {
     scale = static_cast<Score>(1.0) / scale;
+  }
 
   while (!pqResults.empty()) {
-    auto value = pqResults.top();
-    value.id = m_info[value.id].id; // XXX replace iqdb id with post id
+    sim_value value = pqResults.top();
+    value.id = m_info[value.id].post_id; // XXX replace iqdb id with post id
     value.score = value.score * 100 * scale;
 
     V.push_back(value);
     pqResults.pop();
   }
+  */
 
   std::reverse(V.begin(), V.end());
   return V;
 }
 
-void IQDB::removeImage(imageId post_id) {
+void IQDB::removeImage(postId post_id) {
   auto image = sqlite_db_->getImage(post_id);
   if (image == std::nullopt) {
-    WARN("Couldn't remove post #{}; post not in sqlite database.\n", post_id);
+    WARN("couldn't remove post #{}; post not in sqlite database\n", post_id);
     return;
   }
 
-  imgbuckets.remove(image->haar(), image->id);
-  m_info.at(image->id).avgl.v[0] = 0;
+  imgbuckets.remove(image->haar(), image->post_id);
+  m_info.at(image->post_id).avgl.v[0] = 0;
   sqlite_db_->removeImage(post_id);
+  --img_count;
 
-  DEBUG("Removed post #{} from memory and database.\n", post_id);
+  DEBUG("removed post #{} from memory and database\n", post_id);
 }
 
-size_t IQDB::getImgCount() {
-  return m_info.size();
+uint64_t IQDB::getImgCount() {
+  return img_count;
 }
 
 IQDB::IQDB(std::string filename) : sqlite_db_(nullptr) {
