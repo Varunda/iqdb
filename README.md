@@ -1,45 +1,49 @@
 # IQDB: Image Query Database System
 
 IQDB is a reverse image search system. It lets you search a database of images
-to find images that are visually similar to a given image.
+to find images that are visually similar to a given image
 
 this version of IQDB is forked from [Danbooru](https://github.com/danbooru/danbooru),
 which is a fork from the original IQDB used by https://iqdb.org
 
 this fork uses some changes from the [e621](https://github.com/e621ng/iqdb) fork
 
-this fork changes the IDs to be `uint64` instead of `uint32`, and adds a `GET /images:id` handle (which itself was copied from e621's IQDB), and fixes the Docker build (uses Ubuntu 22.04)
+this fork:
 
-# Quickstart
+- changes a `postId` to be a `std::string`
+- changes capitalization to lower case :>
+- removes `imageId` and `iqdbId` (everything is refered to by `postId` now)
+- adds `GET /images/:post_id`, which is copied from e621's IQDB
+
+# quickstart
 
 ```bash
 # build the docker image
 docker build . -t $IMAGE_NAME
 
-# Run IQDB in Docker on port 5588. This will create a database file in the current directory called `iqdb.sqlite`.
+# run IQDB in Docker on port 5588. This will create a database file in the current directory called `iqdb.sqlite`.
 docker run --rm -it -p 5588:5588 -v $PWD:/mnt $IMAGE_NAME http 0.0.0.0 5588 /mnt/iqdb.sqlite
 
-# Test that IQDB is running
+# test that IQDB is running
 curl -v http://localhost:5588/status
 
-# Add `test.jpg` to IQDB with ID 1234. You will need to generate a unique ID for every image you add.
+# add `test.jpg` to IQDB with ID 1234. the IDs are arbitrary strings (Honooru uses MD5 hashes)
 curl -F file=@test.jpg http://localhost:5588/images/1234
 
-# Find images visually similar to `test.jpg`.
+# find images visually similar to `test.jpg`.
 curl -F file=@test.jpg http://localhost:5588/query
 ```
 
-# Usage
+# usage
 
-IQDB is a simple HTTP server with a JSON API. It has commands for adding
-images, removing images, and searching for similar images. Image hashes are
-stored on disk in an SQLite database.
+IQDB is a simple HTTP server with a JSON API. it has commands for adding
+images, removing images, and searching for similar images. image hashes are
+stored on disk in an SQLite database
 
-#### Adding images
+#### adding images
 
-To add an image to the database, POST a file to `/images/:id` where `:id` is an
-ID number for the image. On Danbooru, the IDs used are post IDs, but they can
-be any number to identify the image.
+to add an image to the database, POST a file to `/images/:post_id` where `:post_id` is an
+string ID for the image. on Honooru, the IDs are MD5 hashes of the file, but really can be any string
 
 ```bash
 curl -F file=@test.jpg http://localhost:5588/images/1234
@@ -56,14 +60,14 @@ curl -F file=@test.jpg http://localhost:5588/images/1234
 }
 ```
 
-The `signature` is the raw IQDB signature of the image. Two images are similar
+the `signature` is the raw IQDB signature of the image. Two images are similar
 if their signatures are similar. The `hash` is the signature encoded as a hex
-string.
+string
 
-#### Removing images
+#### removing images
 
-To remove an image to the database, do `DELETE /images/:id` where `:id` is the
-ID number of the image.
+to remove an image to the database, do `DELETE /images/:id` where `:id` is the
+ID number of the image
 
 ```bash
 curl -X DELETE http://localhost:5588/images/1234
@@ -96,15 +100,15 @@ curl -F file=@test.jpg 'http://localhost:5588/query?limit=10'
 ]
 ```
 
-The response will contain the top N most similar images. The `score` field is
+the response will contain the top N most similar images. the `score` field is
 the similarity rating, from 0 to 100. The `post_id` is the ID of the image,
-chosen when you added the image.
+chosen when you added the image
 
-You will have to determine a good cutoff score yourself. Generally, 90+ is a
+you will have to determine a good cutoff score yourself. generally, 90+ is a
 strong match, 70+ is weak match (possibly a false positive), and <50 is no
-match.
+match
 
-# Compiling
+# compiling
 
 IQDB requires the following dependencies to build:
 
@@ -115,18 +119,18 @@ IQDB requires the following dependencies to build:
 * [Python 3](https://www.python.org/downloads)
 * [Git](https://git-scm.com/downloads)
 
-Run `make` to compile the project. The binary will be at `./build/release/src/iqdb`.
+run `make` to compile the project. the binary will be at `./build/release/src/iqdb`
 
-Run `make debug` to compile in debug mode. The binary will be at `./build/debug/src/iqdb`.
+run `make debug` to compile in debug mode. the binary will be at `./build/debug/src/iqdb`
 
-You can also run `cmake --preset release` then `cmake --build --preset release
---verbose` to build the project. `make` is simply a wrapper for these commands.
+you can also run `cmake --preset release` then `cmake --build --preset release --verbose` to build the project.
+`make` is simply a wrapper for these commands
 
-You can run `make docker` to build the docker image.
+you can run `make docker` to build the docker image
 
 or use `docker build .` to build the docker image
 
-See the [Dockerfile](./Dockerfile) for an example of which packages to install on Ubuntu.
+see the [Dockerfile](./Dockerfile) for an example of which packages to install on Ubuntu
 
 # History
 

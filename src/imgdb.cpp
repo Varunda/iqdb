@@ -36,9 +36,9 @@
 namespace iqdb {
 
 void bucket_set::add(const HaarSignature &sig, postId iqdb_id) {
-  eachBucket(sig, [&](bucket_t& bucket) {
-    bucket.push_back(iqdb_id);
-  });
+    eachBucket(sig, [&](bucket_t& bucket) {
+        bucket.push_back(iqdb_id);
+    });
 }
 
 void bucket_set::remove(const HaarSignature &sig, postId iqdb_id) {
@@ -85,6 +85,7 @@ void IQDB::addImageInMemory(postId post_id, const HaarSignature& haar) {
 }
 
 void IQDB::loadDatabase(std::string filename) {
+    INFO("loading DB [filename={}]\n", filename);
     sqlite_db_ = std::make_unique<SqliteDB>(filename);
     m_info.clear();
     imgbuckets = bucket_set();
@@ -114,54 +115,39 @@ sim_vector IQDB::queryFromBlob(const std::string blob, int numres) {
 }
 
 sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numres) {
-  Score scale = 0;
-  //std::vector<Score> scores(m_info.size(), 0);
-  std::map<postId, Score> scores;
-  std::priority_queue<sim_value> pqResults; /* results priority queue; largest at top */
-  sim_vector V; /* output results */
+    Score scale = 0;
+    std::map<postId, Score> scores;
 
-  DEBUG("querying signature={} json={}\n", signature.to_string(), signature.to_json());
+    DEBUG("querying signature={} json={}\n", signature.to_string(), signature.to_json());
 
-  // Luminance score (DC coefficient).
-  for (auto const& elem : m_info) {
-    const image_info& image_info = elem.second;
-    Score s = 0;
+    // luminance score (DC coefficient)
+    for (auto const& elem : m_info) {
+        const image_info& image_info = elem.second;
+        Score s = 0;
 
-    for (int c = 0; c < signature.num_colors(); c++) {
-        s += weights[0][c] * std::abs(image_info.avgl.v[c] - static_cast<Score>(signature.avglf[c]));
+        for (int c = 0; c < signature.num_colors(); c++) {
+            s += weights[0][c] * std::abs(image_info.avgl.v[c] - static_cast<Score>(signature.avglf[c]));
+        }
+
+        scores.emplace(elem.first, s);
     }
-
-    scores.emplace(elem.first, s);
-  }
-
-/*
-  // Luminance score (DC coefficient).
-  for (size_t i = 0; i < scores.size(); i++) {
-    auto image_info = m_info[i];
-    Score s = 0;
-
-    for (int c = 0; c < signature.num_colors(); c++) {
-      s += weights[0][c] * std::abs(image_info.avgl.v[c] - static_cast<Score>(signature.avglf[c]));
-    }
-
-    scores[i] = s;
-  }
-*/
 
     for (int c = 0; c < signature.num_colors(); c++) {
         for (int b = 0; b < NUM_COEFS; b++) { // for every coef on a sig
             const int coef = signature.sig[c][b];
             bucket_t& bucket = imgbuckets.at(c, coef);
 
-            std::string bs;
-            for (const postId& i : bucket) {
-              bs += i;
-            }
-            //INFO("bucket {}\n", bs);
-
             if (bucket.empty()) {
                 continue;
             }
+
+            /*
+            std::string bs;
+            for (const postId& i : bucket) {
+                bs += i + " ";
+            }
+            INFO("bucket {}\n", bs);
+            */
 
             const int w = imgBin.bin[abs(coef)];
             Score weight = weights[w][c];
@@ -169,71 +155,84 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
 
             for (postId index : bucket) {
                 scores[index] -= weight;
-                // scores[index] -= weight;
             }
         }
     }
 
-  // print out elems
+    if (scale != 0) {
+        scale = static_cast<Score>(1.0) / scale;
+    }
+
+    INFO("scale is {}\n", scale);
+
+    // print out elems
     for (auto const& elem : scores) {
         INFO("{} => {}", elem.first, elem.second);
     }
 
-/*
-  // Fill up the numres-bounded priority queue (largest at top):
-  uint64_t i = 0;
-  for (; pqResults.size() < numres && i < scores.size(); i++) {
-    if (!isDeleted(i)) {
-      pqResults.emplace(i, scores[i]);
+    // results priority queue; largest at top
+    std::priority_queue<sim_value> pqResults;
+
+    for (const std::pair<const postId, Score>& elem : scores) {
+        INFO("emplace 1 {} {}\n", elem.first, elem.second);
+        if (!isDeleted(elem.first)) {
+            // creates the sim_value in place, this acts as like a ctor
+            pqResults.emplace(elem.first, elem.second);
+
+            if (pqResults.size() >= numres) {
+                INFO("got {}/{} results, breaking\n", pqResults.size(), numres);
+                break;
+            }
+        }
     }
-  }
 
-  for (; i < scores.size(); i++) {
-    if (!isDeleted(i) && scores[i] < pqResults.top().score) {
-      pqResults.pop();
-      pqResults.emplace(i, scores[i]);
+    // TODO: why is there 2 loops like this? the first loop fills it up to |numres| elements,
+    //      then this loop replaces those top elements? this does restrict memory usage a bit,
+    //      but then why not do this in the first place?
+    for (const std::pair<const postId, Score>& elem : scores) {
+        INFO("emplace 2 {} {}\n", elem.first, elem.second);
+        if (!isDeleted(elem.first) && elem.second < pqResults.top().score) {
+            pqResults.pop();
+            pqResults.emplace(elem.first, elem.second);
+        }
     }
-  }
 
-  if (scale != 0) {
-    scale = static_cast<Score>(1.0) / scale;
-  }
+    sim_vector V; // output results
+    while (!pqResults.empty()) {
+        sim_value value = pqResults.top();
+        value.score = value.score * 100 * scale;
 
-  while (!pqResults.empty()) {
-    sim_value value = pqResults.top();
-    value.id = m_info[value.id].post_id; // XXX replace iqdb id with post id
-    value.score = value.score * 100 * scale;
+        V.push_back(value);
+        pqResults.pop();
+    }
 
-    V.push_back(value);
-    pqResults.pop();
-  }
-  */
-
-  std::reverse(V.begin(), V.end());
-  return V;
+    std::reverse(V.begin(), V.end());
+    return V;
 }
 
 void IQDB::removeImage(postId post_id) {
-  auto image = sqlite_db_->getImage(post_id);
-  if (image == std::nullopt) {
-    WARN("couldn't remove post #{}; post not in sqlite database\n", post_id);
-    return;
-  }
+    auto image = sqlite_db_->getImage(post_id);
+    if (image == std::nullopt) {
+        WARN("couldn't remove post #{}; post not in sqlite database\n", post_id);
+        return;
+    }
 
-  imgbuckets.remove(image->haar(), image->post_id);
-  m_info.at(image->post_id).avgl.v[0] = 0;
-  sqlite_db_->removeImage(post_id);
-  --img_count;
+    imgbuckets.remove(image->haar(), image->post_id);
 
-  DEBUG("removed post #{} from memory and database\n", post_id);
+    // TODO, could we just remove it from the map instead?
+    m_info.at(image->post_id).avgl.v[0] = 0;
+    sqlite_db_->removeImage(post_id);
+    --img_count;
+
+    DEBUG("removed post #{} from memory and database\n", post_id);
 }
 
 uint64_t IQDB::getImgCount() {
-  return img_count;
+    return img_count;
 }
 
 IQDB::IQDB(std::string filename) : sqlite_db_(nullptr) {
-  loadDatabase(filename);
+    loadDatabase(filename);
 }
 
 }

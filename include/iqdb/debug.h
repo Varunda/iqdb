@@ -2,6 +2,8 @@
 #define IQDB_DEBUG_H
 
 #include <fmt/format.h>
+#include <fmt/chrono.h>
+#include <chrono>
 
 namespace iqdb {
 
@@ -20,9 +22,11 @@ std::string demangle_name(std::string symbol_name);
 
 template<typename... Args>
 inline void LOG(std::string format, int level, Args... args) {
-  if (level >= debug_level) {
-    fmt::print(stderr, format, args...); \
-  }
+    if (level >= debug_level) {
+        auto now = std::chrono::system_clock::now();
+        fmt::print(stderr, "{:%FT%H:%M:%S} ", now);
+        fmt::print(stderr, format, args...); \
+    }
 }
 
 template<typename... Args>

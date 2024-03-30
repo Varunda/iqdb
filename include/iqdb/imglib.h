@@ -56,15 +56,15 @@ const Score weights[6][3] =
 // . . . . . . .
 template <int N>
 struct ImgBin {
-  int bin[N * N];
+    int bin[N * N];
 
-  constexpr ImgBin() : bin() {
-    for (int i = 0; i < N; i++) {
-      for (int j = 0; j < N; j++) {
-        bin[i * N + j] = std::min(std::max(i, j), 5);
-      }
+    constexpr ImgBin() : bin() {
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                bin[i * N + j] = std::min(std::max(i, j), 5);
+            }
+        }
     }
-  }
 };
 
 constexpr static auto imgBin = ImgBin<NUM_PIXELS>();
@@ -73,18 +73,18 @@ using bucket_t = std::vector<postId>;
 
 class bucket_set {
 public:
-  bucket_t& at(int col, int coef);
-  void add(const HaarSignature &sig, postId iqdb_id);
-  void remove(const HaarSignature &sig, postId iqdb_id);
-  void eachBucket(const HaarSignature &sig, std::function<void(bucket_t&)> func);
+    bucket_t& at(int col, int coef);
+    void add(const HaarSignature &sig, postId iqdb_id);
+    void remove(const HaarSignature &sig, postId iqdb_id);
+    void eachBucket(const HaarSignature &sig, std::function<void(bucket_t&)> func);
 
 private:
-  static const size_t n_colors  = 3;                     // 3 color channels (YIQ)
-  static const size_t n_signs   = 2;                     // 2 Haar coefficient signs (positive and negative)
-  static const size_t n_indexes = NUM_PIXELS*NUM_PIXELS; // 16384 Haar matrix indexes (128*128)
+    static const size_t n_colors  = 3;                     // 3 color channels (YIQ)
+    static const size_t n_signs   = 2;                     // 2 Haar coefficient signs (positive and negative)
+    static const size_t n_indexes = NUM_PIXELS*NUM_PIXELS; // 16384 Haar matrix indexes (128*128)
 
-  // 3 * 2 * 16384 = 98304 total buckets
-  bucket_t buckets[n_colors][n_signs][n_indexes];
+    // 3 * 2 * 16384 = 98304 total buckets
+    bucket_t buckets[n_colors][n_signs][n_indexes];
 };
 
 }

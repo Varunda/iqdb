@@ -13,26 +13,26 @@ namespace iqdb {
 using namespace sqlite_orm;
 
 HaarSignature Image::haar() const {
-  lumin_t avglf = { avglf1, avglf2, avglf3 };
-  return HaarSignature(avglf, *(signature_t*)sig.data());
+    lumin_t avglf = { avglf1, avglf2, avglf3 };
+    return HaarSignature(avglf, *(signature_t*)sig.data());
 }
 
 void SqliteDB::eachImage(std::function<void (const Image&)> func) {
-  for (auto& image : storage_.iterate<Image>()) {
-    func(image);
-  }
+    for (auto& image : storage_.iterate<Image>()) {
+        func(image);
+    }
 }
 
 std::optional<Image> SqliteDB::getImage(postId post_id) {
-  std::unique_lock lock(sql_mutex_);
-  auto results = storage_.get_all<Image>(where(c(&Image::post_id) == post_id));
+    std::unique_lock lock(sql_mutex_);
+    auto results = storage_.get_all<Image>(where(c(&Image::post_id) == post_id));
 
-  if (results.size() == 1) {
-    return results[0];
-  } else {
-    DEBUG("couldn't find post {} in sqlite database\n", post_id);
-    return std::nullopt;
-  }
+    if (results.size() == 1) {
+        return results[0];
+    } else {
+        DEBUG("couldn't find post {} in sqlite database\n", post_id);
+        return std::nullopt;
+    }
 }
 
 void SqliteDB::addImage(postId post_id, HaarSignature signature) {
@@ -53,7 +53,7 @@ void SqliteDB::addImage(postId post_id, HaarSignature signature) {
 }
 
 void SqliteDB::removeImage(postId post_id) {
-  storage_.remove_all<Image>(where(c(&Image::post_id) == post_id));
+    storage_.remove_all<Image>(where(c(&Image::post_id) == post_id));
 }
 
 }
