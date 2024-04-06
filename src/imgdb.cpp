@@ -118,7 +118,7 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
     Score scale = 0;
     std::map<postId, Score> scores;
 
-    DEBUG("querying signature={} json={}\n", signature.to_string(), signature.to_json());
+    DEBUG("querying signature={}\n", signature.to_string());
 
     // luminance score (DC coefficient)
     for (auto const& elem : m_info) {
@@ -166,34 +166,21 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
     INFO("scale is {}\n", scale);
 
     // print out elems
-    for (auto const& elem : scores) {
-        INFO("{} => {}", elem.first, elem.second);
+    for (const std::pair<const postId, Score>& elem : scores) {
+        INFO("{} => {}\n", elem.first, elem.second);
     }
 
     // results priority queue; largest at top
     std::priority_queue<sim_value> pqResults;
-
-    for (const std::pair<const postId, Score>& elem : scores) {
-        INFO("emplace 1 {} {}\n", elem.first, elem.second);
-        if (!isDeleted(elem.first)) {
-            // creates the sim_value in place, this acts as like a ctor
-            pqResults.emplace(elem.first, elem.second);
-
-            if (pqResults.size() >= numres) {
-                INFO("got {}/{} results, breaking\n", pqResults.size(), numres);
-                break;
-            }
-        }
-    }
-
-    // TODO: why is there 2 loops like this? the first loop fills it up to |numres| elements,
-    //      then this loop replaces those top elements? this does restrict memory usage a bit,
-    //      but then why not do this in the first place?
     for (const std::pair<const postId, Score>& elem : scores) {
         INFO("emplace 2 {} {}\n", elem.first, elem.second);
-        if (!isDeleted(elem.first) && elem.second < pqResults.top().score) {
-            pqResults.pop();
+        if (!isDeleted(elem.first)) {
             pqResults.emplace(elem.first, elem.second);
+        }
+
+        // pops to lowest result off
+        if (pqResults.size() > numres) {
+            pqResults.pop();
         }
     }
 

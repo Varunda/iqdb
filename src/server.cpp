@@ -96,7 +96,6 @@ void http_server(const std::string host, const int port, const std::string datab
             data = {
                 { "post_id", post_id.c_str() },
                 { "hash", image->haar().to_string() },
-                { "avglf", { image->avglf1, image->avglf2, image->avglf3 }},
             };
         }
 
@@ -122,11 +121,8 @@ void http_server(const std::string host, const int port, const std::string datab
 
         json data = {
             {"post_id", post_id},
-            {"hash", signature.to_string()},
-            {"signature", {
-                {"avglf", signature.avglf},
-                {"sig", signature.sig},
-            }}};
+            {"hash", signature.to_string()}
+        };
 
         response.set_content(data.dump(4), "application/json");
     });
@@ -136,13 +132,22 @@ void http_server(const std::string host, const int port, const std::string datab
     server.Delete("/images/(.+)", [&](const httplib::Request& request, httplib::Response& response) {
         std::unique_lock lock(mutex_);
 
+
         const postId post_id = request.matches[1];
         INFO("removing post from DB [post_id={}]\n", post_id);
-        memory_db->removeImage(post_id);
 
-        json data = {
-            { "post_id", post_id },
-        };
+        std::optional<Image> image = memory_db->getImage(post_id);
+        json data;
+        if (image == std::nullopt) {
+            data = { { "message", "not found" } };
+            response.status = 404;
+        } else {
+            memory_db->removeImage(post_id);
+
+            data = {
+                { "post_id", post_id },
+            };
+        }
 
         response.set_content(data.dump(4), "application/json");
     });
@@ -172,7 +177,7 @@ void http_server(const std::string host, const int port, const std::string datab
             throw param_error("`POST /query` requires a `file` or `hash` param");
         }
 
-        for (const auto &match : matches) {
+        for (const sim_value& match : matches) {
             std::optional<Image> image = memory_db->getImage(match.id);
             if (image == std::nullopt) {
                 WARN("failed to find image {} from memory_db\n", match.id);
@@ -184,12 +189,8 @@ void http_server(const std::string host, const int port, const std::string datab
             data += {
                 {"post_id", match.id},
                 {"score", match.score},
-                {"hash", haar.to_string()},
-                {"signature", {
-                    {"avglf", haar.avglf}
-                    //{"sig", haar.sig},
-                }
-            }};
+                {"hash", haar.to_string()}
+            };
         }
 
         response.set_content(data.dump(4), "application/json");
