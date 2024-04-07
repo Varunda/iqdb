@@ -95,7 +95,28 @@ void http_server(const std::string host, const int port, const std::string datab
         } else {
             data = {
                 { "post_id", post_id.c_str() },
+                { "md5", image->md5 },
                 { "hash", image->haar().to_string() },
+            };
+        }
+
+        response.set_content(data.dump(4), "application/json");
+    });
+
+    server.Get("/md5/:md5", [&](const httplib::Request& request, httplib::Response& response) {
+        std::unique_lock lock(mutex_);
+
+        const std::string& md5 = request.path_params.at("md5");
+        INFO("getting posts based on MD5 [md5={}]\n", md5);
+        std::vector<Image> images = memory_db->getByMD5(md5);
+
+        json data;
+
+        for (const Image& image : images) {
+            data += {
+                { "post_id", image.post_id },
+                { "md5", image.md5 },
+                { "hash", image.haar().to_string() }
             };
         }
 
@@ -106,7 +127,7 @@ void http_server(const std::string host, const int port, const std::string datab
     //      post a new image, creating a hash for it
     // must include a file named "file" as part of the POST request
     //    
-    server.Post("/images/:post_id", [&](const httplib::Request& request, httplib::Response& response) {
+    server.Post("/images/:post_id/:md5", [&](const httplib::Request& request, httplib::Response& response) {
         std::unique_lock lock(mutex_);
 
         if (!request.has_file("file")) {
@@ -114,14 +135,16 @@ void http_server(const std::string host, const int port, const std::string datab
         }
 
         const postId post_id = request.path_params.at("post_id");
-        INFO("posting image [post_id='{}']\n", post_id);
+        const std::string& md5 = request.path_params.at("md5");
+        INFO("posting image [post_id='{}'] [md5='{}']\n", post_id, md5);
         const auto &file = request.get_file_value("file");
         const HaarSignature signature = HaarSignature::from_file_content(file.content);
-        memory_db->addImage(post_id, signature);
+        memory_db->addImage(post_id, md5, signature);
 
         json data = {
-            {"post_id", post_id},
-            {"hash", signature.to_string()}
+            { "post_id", post_id },
+            { "md5", md5 },
+            { "hash", signature.to_string() }
         };
 
         response.set_content(data.dump(4), "application/json");
@@ -131,7 +154,6 @@ void http_server(const std::string host, const int port, const std::string datab
     //      delete an image from the DB
     server.Delete("/images/(.+)", [&](const httplib::Request& request, httplib::Response& response) {
         std::unique_lock lock(mutex_);
-
 
         const postId post_id = request.matches[1];
         INFO("removing post from DB [post_id={}]\n", post_id);
@@ -146,6 +168,7 @@ void http_server(const std::string host, const int port, const std::string datab
 
             data = {
                 { "post_id", post_id },
+                { "md5", image->md5 }
             };
         }
 
@@ -187,9 +210,10 @@ void http_server(const std::string host, const int port, const std::string datab
             const HaarSignature& haar = image->haar();
 
             data += {
-                {"post_id", match.id},
-                {"score", match.score},
-                {"hash", haar.to_string()}
+                { "post_id", match.id },
+                { "md5", image->md5 },
+                { "score", match.score },
+                { "hash", haar.to_string() }
             };
         }
 

@@ -74,8 +74,11 @@ struct sim_value {
 
 struct image_info {
     image_info() {}
-    image_info(postId i, const lumin_native &a) : id(i), avgl(a) {}
+    image_info(postId i, const std::string& md5, const lumin_native &a)
+        : id(i), md5(md5), avgl(a) {}
+
     postId id;
+    std::string md5;
     lumin_native avgl;
 };
 
@@ -99,10 +102,13 @@ public:
     bool isDeleted(postId iqdb_id); 
 
     // add a new image to the DB
-    void addImage(postId id, const HaarSignature& signature);
+    void addImage(postId id, const std::string& md5, const HaarSignature& signature);
 
     // get an image from the DB. will be std::nullopt if not found
     std::optional<Image> getImage(postId post_id);
+
+    // get all images from the DB with the matching md5 hash
+    std::vector<Image> getByMD5(const std::string& md5);
 
     // remove an image from the DB
     void removeImage(postId id);
@@ -112,7 +118,7 @@ public:
 
 private:
     // cache a post in memory
-    void addImageInMemory(postId post_id, const HaarSignature& signature);
+    void addImageInMemory(postId post_id, const std::string& md5, const HaarSignature& signature);
 
     // cached data
     std::map<postId, image_info> m_info;

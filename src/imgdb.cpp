@@ -63,20 +63,21 @@ void bucket_set::eachBucket(const HaarSignature &sig, std::function<void(bucket_
     }
 }
 
-void IQDB::addImage(postId post_id, const HaarSignature& haar) {
+void IQDB::addImage(postId post_id, const std::string& md5, const HaarSignature& haar) {
     removeImage(post_id);
-    sqlite_db_->addImage(post_id, haar);
-    addImageInMemory(post_id, haar);
+    sqlite_db_->addImage(post_id, md5, haar);
+    addImageInMemory(post_id, md5, haar);
 
     DEBUG("Added post {} to memory and database (haar={})\n", post_id, haar.to_string());
 }
 
-void IQDB::addImageInMemory(postId post_id, const HaarSignature& haar) {
+void IQDB::addImageInMemory(postId post_id, const std::string& md5, const HaarSignature& haar) {
     imgbuckets.add(haar, post_id);
     img_count++;
 
     image_info info;
     info.id = post_id;
+    info.md5 = md5;
     info.avgl.v[0] = static_cast<Score>(haar.avglf[0]);
     info.avgl.v[1] = static_cast<Score>(haar.avglf[1]);
     info.avgl.v[2] = static_cast<Score>(haar.avglf[2]);
@@ -91,7 +92,7 @@ void IQDB::loadDatabase(std::string filename) {
     imgbuckets = bucket_set();
 
     sqlite_db_->eachImage([&](const iqdb::Image& image) {
-        addImageInMemory(image.post_id, image.haar());
+        addImageInMemory(image.post_id, image.md5, image.haar());
 
         if (img_count % 250000 == 0) {
             INFO("loaded image (post {})...\n", image.post_id);
@@ -107,6 +108,10 @@ bool IQDB::isDeleted(postId iqdb_id) {
 
 std::optional<Image> IQDB::getImage(postId post_id) {
     return sqlite_db_->getImage(post_id);
+}
+
+std::vector<Image> IQDB::getByMD5(const std::string& md5) {
+    return sqlite_db_->getByMD5(md5);
 }
 
 sim_vector IQDB::queryFromBlob(const std::string blob, int numres) {
