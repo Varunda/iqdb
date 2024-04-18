@@ -134,12 +134,15 @@ void http_server(const std::string host, const int port, const std::string datab
             throw iqdb::param_error("`POST /images/:id` requires a `file` param");
         }
 
+        auto now = std::chrono::system_clock::now();
         const postId post_id = request.path_params.at("post_id");
         const std::string& md5 = request.path_params.at("md5");
         INFO("posting image [post_id='{}'] [md5='{}']\n", post_id, md5);
         const auto &file = request.get_file_value("file");
         const HaarSignature signature = HaarSignature::from_file_content(file.content);
         memory_db->addImage(post_id, md5, signature);
+        auto done = std::chrono::system_clock::now();
+        INFO("took {} to create hash\n", std::chrono::duration_cast<std::chrono::milliseconds>(done - now));
 
         json data = {
             { "post_id", post_id },
@@ -152,24 +155,39 @@ void http_server(const std::string host, const int port, const std::string datab
 
     // DELETE /images/:id
     //      delete an image from the DB
-    server.Delete("/images/(.+)", [&](const httplib::Request& request, httplib::Response& response) {
+    server.Delete("/images", [&](const httplib::Request& request, httplib::Response& response) {
         std::unique_lock lock(mutex_);
 
-        const postId post_id = request.matches[1];
-        INFO("removing post from DB [post_id={}]\n", post_id);
-
-        std::optional<Image> image = memory_db->getImage(post_id);
         json data;
-        if (image == std::nullopt) {
-            data = { { "message", "not found" } };
-            response.status = 404;
-        } else {
-            memory_db->removeImage(post_id);
+        if (request.has_param("post_id")) {
+            const postId& post_id = request.get_param_value("post_id");
+            INFO("removing post from DB [post_id={}]\n", post_id);
 
+            std::optional<Image> image = memory_db->getImage(post_id);
+            if (image == std::nullopt) {
+                data = { { "message", "not found" } };
+                response.status = 404;
+            } else {
+                memory_db->removeImage(post_id);
+
+                data = {
+                    { "post_id", post_id },
+                    { "md5", image->md5 }
+                };
+            }
+        } else if (request.has_param("md5")) {
+            const std::string& md5 = request.get_param_value("md5");
+            INFO("removing post by md5 from DB [md5={}]\n", md5);
+
+            std::vector<Image> images = memory_db->getByMD5(md5);
+            for (const Image& image : images) {
+                memory_db->removeImage(image.post_id);
+            }
+        } else {
             data = {
-                { "post_id", post_id },
-                { "md5", image->md5 }
+                {"error", "either post_id or md5 must be given in the query parameters"}
             };
+            response.status = 400;
         }
 
         response.set_content(data.dump(4), "application/json");
@@ -208,6 +226,8 @@ void http_server(const std::string host, const int port, const std::string datab
             }
 
             const HaarSignature& haar = image->haar();
+
+            //DEBUG("adding {} {} {}\n", match.id, image->md5, match.score);
 
             data += {
                 { "post_id", match.id },

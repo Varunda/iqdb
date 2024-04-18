@@ -172,13 +172,13 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
 
     // print out elems
     for (const std::pair<const postId, Score>& elem : scores) {
-        INFO("{} => {}\n", elem.first, elem.second);
+        //INFO("{} => {}\n", elem.first, elem.second);
     }
 
     // results priority queue; largest at top
     std::priority_queue<sim_value> pqResults;
     for (const std::pair<const postId, Score>& elem : scores) {
-        INFO("emplace 2 {} {}\n", elem.first, elem.second);
+        //INFO("emplace {} {}\n", elem.first, elem.second);
         if (!isDeleted(elem.first)) {
             pqResults.emplace(elem.first, elem.second);
         }
@@ -194,6 +194,8 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
         sim_value value = pqResults.top();
         value.score = value.score * 100 * scale;
 
+        //DEBUG("including {} => {}\n", value.id, value.score);
+
         V.push_back(value);
         pqResults.pop();
     }
@@ -203,7 +205,7 @@ sim_vector IQDB::queryFromSignature(const HaarSignature &signature, size_t numre
 }
 
 void IQDB::removeImage(postId post_id) {
-    auto image = sqlite_db_->getImage(post_id);
+    std::optional<Image> image = sqlite_db_->getImage(post_id);
     if (image == std::nullopt) {
         WARN("couldn't remove post #{}; post not in sqlite database\n", post_id);
         return;
@@ -212,7 +214,8 @@ void IQDB::removeImage(postId post_id) {
     imgbuckets.remove(image->haar(), image->post_id);
 
     // TODO, could we just remove it from the map instead?
-    m_info.at(image->post_id).avgl.v[0] = 0;
+    m_info.erase(image->post_id);
+    //m_info.at(image->post_id).avgl.v[0] = 0;
     sqlite_db_->removeImage(post_id);
     --img_count;
 
